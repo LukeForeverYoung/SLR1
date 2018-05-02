@@ -28,14 +28,15 @@ namespace SLR1
 	class Sheet
 	{
 		public Grammer grammer;
-		HashSet<ProjectSet> MainSet;
+		Dictionary<ProjectSet,int> MainSet;
 		Dictionary<int, Dictionary<int, Action>> actionSheet;
 		public Sheet(Grammer grammer)
 		{
 			this.grammer = grammer;
-			MainSet = new HashSet<ProjectSet>();
+			MainSet = new Dictionary<ProjectSet, int>();
 			actionSheet = new Dictionary<int, Dictionary<int, Action>>();
 			MakeRule();
+			PrintSheet();
 		}
 		
 		public interface Action { }
@@ -212,12 +213,15 @@ namespace SLR1
 				initSet.Add(new Project(edge));
 			}
 			Closure(initSet);
+			MainSet.Add(initSet,initSet.id);
 			//构造一个队列做BFS，MainSet用来做簇的去重,next指向下一个簇的引用
 			Queue<ProjectSet> q = new Queue<ProjectSet>();
 			q.Enqueue(initSet);
 			while(q.Count()!=0)
 			{
 				ProjectSet nowState = q.Dequeue();
+				if (nowState.id == 23)
+					Console.WriteLine("aaa");
 				Dictionary<int, List<Project> > classification = new Dictionary<int, List<Project> >();
 				foreach (var project in nowState.projects)
 				{
@@ -225,7 +229,7 @@ namespace SLR1
 					{
 						foreach(var followItem in grammer.GetFollow(project.GetFrom()))
 						{
-							if (nowState.id==-1)
+							if (project.GetFrom()==-1)
 								AddSheetItem(nowState.id, followItem, new Accept());
 							else
 								AddSheetItem(nowState.id, followItem, new Reduce(project.GetEdge()));
@@ -238,7 +242,9 @@ namespace SLR1
 						classification[project.RightSymbol()].Add(project.NextProject());
 					}
 				}
-				foreach(var item in classification)
+				if (nowState.id == 13)
+					Console.WriteLine("aaa");
+				foreach (var item in classification)
 				{
 					var newSet = new ProjectSet();
 					foreach(var project in item.Value)
@@ -246,27 +252,31 @@ namespace SLR1
 						newSet.Add(project);
 					}
 					Closure(newSet);
-					if (MainSet.Contains(newSet))
+					if (MainSet.ContainsKey(newSet))
+					{
+						newSet.id = MainSet[newSet];
 						ProjectSet.SubCount();
+					}
 					else
 					{
-						Console.WriteLine(nowState.id + " " + item.Key);
-						AddSheetItem(nowState.id, item.Key, new Shift(newSet.id));
-						if(!MainSet.Contains(newSet))
+						//Console.WriteLine(nowState.id + " " + item.Key);
+						if(!MainSet.ContainsKey(newSet))
 						{
-							MainSet.Add(newSet);
+							MainSet.Add(newSet,newSet.id);
 							q.Enqueue(newSet);
 						}
 					}
+					AddSheetItem(nowState.id, item.Key, new Shift(newSet.id));
 				}
 			}
 		}
+		
 		public void PrintSheet()
 		{
 			List<ProjectSet> list = new List<ProjectSet>();
 			foreach(var item in MainSet)
 			{
-				list.Add(item);
+				list.Add(item.Key);
 			}
 			list.Sort((a, b) =>
 			{
@@ -274,9 +284,21 @@ namespace SLR1
 			});
 			foreach (var item in list)
 			{
-				Console.WriteLine(item.id);
+				Console.WriteLine("State "+item.id+":");
+				foreach(var i in actionSheet[item.id])
+				{
+					Console.Write("nextSymbol: " + grammer.Code2Symbol[i.Key]+" ");
+					if (i.Value is Shift)
+						Console.WriteLine((i.Value as Shift).nextState);
+					else if(i.Value is Reduce)
+					{
+						Console.WriteLine(grammer.Code2Symbol[(i.Value as Reduce).reduceEdge.GetFrom()] + " " + (i.Value as Reduce).reduceEdge.to.Length);
+					}
+				}
 			}
+			Console.WriteLine(MainSet.Count);
 		}
+		
 	}
 	class Driver
 	{
@@ -311,11 +333,16 @@ namespace SLR1
 			else
 			{
 				StringBuilder stringBuilder = new StringBuilder();
-				stringBuilder
+				var red = action as Reduce;
+				stringBuilder.Append(sheet.grammer.Code2Symbol[red.reduceEdge.GetFrom()]+"->");
+				foreach (var code in red.reduceEdge.to)
+					stringBuilder.Append(sheet.grammer.Code2Symbol[code] + " ");
+				Console.WriteLine(stringBuilder.ToString());
 			}
 		}
 		public void Run(String tokenFilePath)
 		{
+			
 			Init(tokenFilePath);
 			states.Push(0);
 			bool flag = false;
@@ -324,9 +351,20 @@ namespace SLR1
 				int nowState = states.Peek();
 				int nextSymbol = input.Peek();
 				var nowAction = sheet.GetAction(nowState, nextSymbol);
-				if (nowAction != null)
-					Console.WriteLine(nowAction.GetType() + ": ");
-				PrintAction(nowAction);
+				//debug
+				Console.WriteLine(nowState);
+				Console.WriteLine(sheet.grammer.Code2Symbol[nextSymbol]);
+				if(nowAction is Reduce)
+				{
+					StringBuilder stringBuilder = new StringBuilder();
+					var red = nowAction as Reduce;
+					stringBuilder.Append(sheet.grammer.Code2Symbol[red.reduceEdge.GetFrom()] + "->");
+					foreach (var code in red.reduceEdge.to)
+						stringBuilder.Append(sheet.grammer.Code2Symbol[code] + " ");
+					Console.WriteLine(stringBuilder.ToString());
+				}
+				//
+				//PrintAction(nowAction);
 				if (nowAction is Accept)
 				{
 					flag = true;
@@ -668,15 +706,28 @@ namespace SLR1
 				Console.WriteLine();
 			}
 		}
+		private void RemoveVoid()
+		{
+			foreach(var item in grammerMap)
+			{
+				foreach(var edge in item.Value.edges)
+				{
+					if (edge.to.Contains(Void))
+						edge.to = edge.to.Take(0).ToArray();
+				}
+			}
+		}
 		public Grammer(String filePath,String classCodePath)
 		{
 			ReadGrammer(filePath,classCodePath);
 			//SLR1部分不直接求first,因为只需要follow集,为了预防不必要的左递归.
 			//MakeFirst();
 			MakeFollow();
-			
+
 			//PrintFollow();
 			//MakeSelect();
+			//删除空产生式后就不能求各种集了,为项目集做准备
+			RemoveVoid();
 		}
 	}
 
