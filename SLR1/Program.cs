@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using static SLR1.Grammer.GrammerItem;
 using static SLR1.Sheet;
@@ -15,17 +16,18 @@ namespace SLR1
 		static void Main(string[] args)
 		{
 			
-			/*
+			
 			Grammer grammer = new Grammer(@"Grammer/GrammerTest.txt",@"Grammer/ClassCode.txt");
 			Sheet sheet = new Sheet(grammer);
-			sheet.PrintSheet();
+			Driver driver = new Driver(sheet);
+			driver.Run(@"Token/tokens.txt");
 			Console.Read();
-			*/
+			
 		}
 	}
 	class Sheet
 	{
-		Grammer grammer;
+		public Grammer grammer;
 		HashSet<ProjectSet> MainSet;
 		Dictionary<int, Dictionary<int, Action>> actionSheet;
 		public Sheet(Grammer grammer)
@@ -223,11 +225,6 @@ namespace SLR1
 					{
 						foreach(var followItem in grammer.GetFollow(project.GetFrom()))
 						{
-							Console.Write(nowState.id + " " + followItem+" "+grammer.Code2Symbol[project.GetFrom()]+"->");
-							
-							foreach (var item in project.GetEdge().to)
-								Console.Write(grammer.Code2Symbol[item] + " ");
-							Console.WriteLine();
 							if (nowState.id==-1)
 								AddSheetItem(nowState.id, followItem, new Accept());
 							else
@@ -260,7 +257,6 @@ namespace SLR1
 							MainSet.Add(newSet);
 							q.Enqueue(newSet);
 						}
-						
 					}
 				}
 			}
@@ -297,11 +293,26 @@ namespace SLR1
 			states = new Stack<int>();
 			input = new Stack<int>();
 			var tokens = ReadToken(tokenFilePath);
-			foreach (var item in tokens)
+			for(int i=tokens.Length-1;i>=0;i--)
 			{
-				input.Push(item.code);
+				input.Push(tokens[i].code);
 			}
-			input.Reverse();
+			Console.WriteLine(input.Peek());
+
+		}
+		public void PrintAction(Sheet.Action action)
+		{
+			if (action == null) return;
+			Console.WriteLine(action.GetType()+":");
+			if(action is Shift)
+			{
+				Console.WriteLine(sheet.grammer.Code2Symbol[(action as Shift).nextState]);
+			}
+			else
+			{
+				StringBuilder stringBuilder = new StringBuilder();
+				stringBuilder
+			}
 		}
 		public void Run(String tokenFilePath)
 		{
@@ -313,13 +324,17 @@ namespace SLR1
 				int nowState = states.Peek();
 				int nextSymbol = input.Peek();
 				var nowAction = sheet.GetAction(nowState, nextSymbol);
-				if(nowAction is Accept)
+				if (nowAction != null)
+					Console.WriteLine(nowAction.GetType() + ": ");
+				PrintAction(nowAction);
+				if (nowAction is Accept)
 				{
 					flag = true;
 					break;
 				}
 				else if(nowAction is Shift)
 				{
+					
 					input.Pop();
 					states.Push((nowAction as Shift).nextState);
 				}
