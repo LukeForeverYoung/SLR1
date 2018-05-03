@@ -28,17 +28,27 @@ namespace SLR1
 	class Sheet
 	{
 		public Grammer grammer;
-		Dictionary<ProjectSet,int> MainSet;
+		List<ProjectSet> MainSet;
 		Dictionary<int, Dictionary<int, Action>> actionSheet;
 		public Sheet(Grammer grammer)
 		{
 			this.grammer = grammer;
-			MainSet = new Dictionary<ProjectSet, int>();
+			MainSet = new List<ProjectSet>();
 			actionSheet = new Dictionary<int, Dictionary<int, Action>>();
 			MakeRule();
 			PrintSheet();
 		}
-		
+		private ProjectSet FindSetByObject(ProjectSet item){
+			foreach(var i in MainSet)
+			{
+				if (i.Equals(item)) return i;
+			}
+			return null;
+		}
+		public ProjectSet FindSetById(int id)
+		{
+			return MainSet[id];
+		}
 		public interface Action { }
 		public class Shift : Action
 		{
@@ -67,6 +77,25 @@ namespace SLR1
 				return stateSheet[symbolCode];
 			return null;
 		}
+		
+		public int[] GetStateAllFroms(int stateId)
+		{
+			List<int> list = new List<int>();
+			foreach(var i in MainSet[stateId].projects)
+			{
+				list.Add(i.GetFrom());
+			}
+			return list.ToArray();
+		}
+		public bool HasFunctionLeftBracket(int stateId)
+		{
+			foreach(var i in MainSet[stateId].projects)
+			{
+				if (i.GetFrom() == grammer.Symbol2Code["K"] && i.RightSymbol() == grammer.Symbol2Code["("])
+					return true;
+			}
+			return false;
+		}
 		private void AddSheetItem(int stateId,int nextSymbol,Action action)
 		{
 			Dictionary<int, Action> stateObject;
@@ -86,7 +115,7 @@ namespace SLR1
 			}
 			stateObject[nextSymbol] = action;
 		}
-		class Project
+		public class Project
 		{
 			EdgeItem edge;
 			int pointPosition;
@@ -136,7 +165,7 @@ namespace SLR1
 				return edge.GetHashCode()^pointPosition.GetHashCode();
 			}
 		}
-		class ProjectSet
+		public class ProjectSet
 		{
 			static int idCount=0;
 			static public void SubCount()
@@ -145,12 +174,10 @@ namespace SLR1
 			}
 			public int id;
 			public HashSet<Project> projects;
-			public Dictionary<int, ProjectSet> next;
 			public ProjectSet()
 			{
 				id = idCount++;
 				projects = new HashSet<Project>();
-				next = new Dictionary<int, ProjectSet>();
 			}
 			public void Add(Project item)
 			{
@@ -213,15 +240,13 @@ namespace SLR1
 				initSet.Add(new Project(edge));
 			}
 			Closure(initSet);
-			MainSet.Add(initSet,initSet.id);
+			MainSet.Add(initSet);
 			//构造一个队列做BFS，MainSet用来做簇的去重,next指向下一个簇的引用
 			Queue<ProjectSet> q = new Queue<ProjectSet>();
 			q.Enqueue(initSet);
 			while(q.Count()!=0)
 			{
 				ProjectSet nowState = q.Dequeue();
-				if (nowState.id == 23)
-					Console.WriteLine("aaa");
 				Dictionary<int, List<Project> > classification = new Dictionary<int, List<Project> >();
 				foreach (var project in nowState.projects)
 				{
@@ -242,8 +267,6 @@ namespace SLR1
 						classification[project.RightSymbol()].Add(project.NextProject());
 					}
 				}
-				if (nowState.id == 13)
-					Console.WriteLine("aaa");
 				foreach (var item in classification)
 				{
 					var newSet = new ProjectSet();
@@ -252,19 +275,16 @@ namespace SLR1
 						newSet.Add(project);
 					}
 					Closure(newSet);
-					if (MainSet.ContainsKey(newSet))
+					var findItem = FindSetByObject(newSet);
+					if (findItem!=null)
 					{
-						newSet.id = MainSet[newSet];
+						newSet = findItem;
 						ProjectSet.SubCount();
 					}
 					else
 					{
-						//Console.WriteLine(nowState.id + " " + item.Key);
-						if(!MainSet.ContainsKey(newSet))
-						{
-							MainSet.Add(newSet,newSet.id);
-							q.Enqueue(newSet);
-						}
+						MainSet.Add(newSet);
+						q.Enqueue(newSet);
 					}
 					AddSheetItem(nowState.id, item.Key, new Shift(newSet.id));
 				}
@@ -276,7 +296,7 @@ namespace SLR1
 			List<ProjectSet> list = new List<ProjectSet>();
 			foreach(var item in MainSet)
 			{
-				list.Add(item.Key);
+				list.Add(item);
 			}
 			list.Sort((a, b) =>
 			{
@@ -340,18 +360,38 @@ namespace SLR1
 				Console.WriteLine(stringBuilder.ToString());
 			}
 		}
+		private int GetBrackedIndex(int symbolCode)
+		{
+			int bracketIndex = -1;
+			if (symbolCode == 31)
+				bracketIndex = symbolCode - 31;
+			if (bracketIndex == 32)
+				bracketIndex = symbolCode - 32 + 3;
+			if (symbolCode == 29)
+				bracketIndex = symbolCode - 29 + 1;
+			if (symbolCode == 30)
+				bracketIndex = symbolCode - 30 + 4;
+			if (symbolCode == 33)
+				bracketIndex = symbolCode - 33 + 2;
+			if (symbolCode == 34)
+				bracketIndex = symbolCode - 34 + 3;
+			return bracketIndex;
+		}
 		public void Run(String tokenFilePath)
 		{
-			
+			int[] bracketStack = new int[3];
 			Init(tokenFilePath);
 			states.Push(0);
 			bool flag = false;
-			while(true)
+			bool meetError = false;
+			int preSymbol=-1;
+			while(input.Count()!=0)
 			{
 				int nowState = states.Peek();
 				int nextSymbol = input.Peek();
 				var nowAction = sheet.GetAction(nowState, nextSymbol);
 				//debug
+				/*
 				Console.WriteLine(nowState);
 				Console.WriteLine(sheet.grammer.Code2Symbol[nextSymbol]);
 				if(nowAction is Reduce)
@@ -363,6 +403,7 @@ namespace SLR1
 						stringBuilder.Append(sheet.grammer.Code2Symbol[code] + " ");
 					Console.WriteLine(stringBuilder.ToString());
 				}
+				*/
 				//
 				//PrintAction(nowAction);
 				if (nowAction is Accept)
@@ -372,7 +413,15 @@ namespace SLR1
 				}
 				else if(nowAction is Shift)
 				{
-					
+					int brackedIndex = GetBrackedIndex(nextSymbol);
+					if(brackedIndex!=-1)
+					{
+						if (brackedIndex < 3)
+							bracketStack[brackedIndex]++;
+						else
+							bracketStack[brackedIndex-3]--;
+					}
+					preSymbol = nextSymbol;
 					input.Pop();
 					states.Push((nowAction as Shift).nextState);
 				}
@@ -385,12 +434,66 @@ namespace SLR1
 				}
 				else
 				{
-					Console.WriteLine("Error");
-					break;
+					meetError = true;
+					if(	preSymbol== sheet.grammer.Symbol2Code["+"]||
+						preSymbol== sheet.grammer.Symbol2Code["*"])
+					{
+						input.Push(sheet.grammer.Symbol2Code["number"]);
+						Console.WriteLine("Expect a number after " + sheet.grammer.Code2Symbol[preSymbol]);
+					}
+					else if(nextSymbol == sheet.grammer.Symbol2Code["+"] ||
+							nextSymbol == sheet.grammer.Symbol2Code["*"])
+					{
+						input.Push(sheet.grammer.Symbol2Code["number"]);
+						Console.WriteLine("Expect a number after " + sheet.grammer.Code2Symbol[nextSymbol]);
+					}
+					else if (preSymbol == sheet.grammer.Symbol2Code["while"]|| preSymbol == sheet.grammer.Symbol2Code["for"])
+					{
+						input.Push(sheet.grammer.Symbol2Code["("]);
+						bracketStack[0]++;
+						Console.WriteLine("Expect '(' after "+ sheet.grammer.Code2Symbol[preSymbol]);
+						continue;
+					}
+					else if (sheet.HasFunctionLeftBracket(nowState))
+					{
+						input.Push(sheet.grammer.Symbol2Code["("]);
+						bracketStack[0]++;
+						Console.WriteLine("Expect '(' after " + sheet.grammer.Code2Symbol[preSymbol]);
+						continue;
+					}
+					else if (sheet.GetAction(nowState, sheet.grammer.Symbol2Code[")"])!=null&&bracketStack[0]!=0)
+					{
+						input.Push(sheet.grammer.Symbol2Code[")"]);
+						Console.WriteLine("Expect ')' before " + sheet.grammer.Code2Symbol[nextSymbol]);
+						continue;
+					}
+					else if (sheet.GetAction(nowState, sheet.grammer.Symbol2Code["]"]) != null && bracketStack[1] != 0)
+					{
+						input.Push(sheet.grammer.Symbol2Code["]"]);
+						Console.WriteLine("Expect ')' before " + sheet.grammer.Code2Symbol[nextSymbol]);
+						continue;
+					}
+					else if (sheet.GetAction(nowState, sheet.grammer.Symbol2Code["}"]) != null && bracketStack[2] != 0)
+					{
+						input.Push(sheet.grammer.Symbol2Code["}"]);
+						Console.WriteLine("Expect ')' before " + sheet.grammer.Code2Symbol[nextSymbol]);
+						continue;
+					}
+					else
+					{
+						Console.WriteLine("UnExpected symbol "+ sheet.grammer.Code2Symbol[nextSymbol]);
+						input.Pop();
+						Console.WriteLine(input.Count());
+						continue;
+					}
 				}
 			}
-			if (flag)
+			if (flag&&!meetError)
 				Console.WriteLine("Accepted");
+			else
+			{
+				Console.WriteLine("Failed");
+			}
 		}
 		class Token
 		{
@@ -454,6 +557,10 @@ namespace SLR1
 		public class GrammerItem
 		{
 			int from;
+			public int GetFrom()
+			{
+				return from;
+			}
 			public class EdgeItem
 			{
 				int from;
@@ -517,7 +624,11 @@ namespace SLR1
 		}
 		HashSet<int> MakeFirst(GrammerItem now)
 		{
-			if (now.firstSet != null) return now.firstSet;
+			if (now.firstSet != null)
+			{
+				//Console.WriteLine("First递归"+Code2Symbol[now.GetFrom()]);
+				return now.firstSet;
+			}
 			now.firstSet = new HashSet<int>();
 			foreach (var edge in now.edges)
 			{
@@ -727,8 +838,11 @@ namespace SLR1
 			//PrintFollow();
 			//MakeSelect();
 			//删除空产生式后就不能求各种集了,为项目集做准备
+			var a=GetFirst(new int[] { Symbol2Code["D"] });
+			foreach(var i in a)
+				Console.Write(Code2Symbol[i] + " ");
+			//Console.Read();
 			RemoveVoid();
 		}
 	}
-
 }
