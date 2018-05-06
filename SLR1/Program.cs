@@ -377,10 +377,78 @@ namespace SLR1
 				bracketIndex = symbolCode - 34 + 3;
 			return bracketIndex;
 		}
+        private void recover(Stack<int> rec)
+        {
+            while (rec.Count() != 0)
+                input.Push(rec.Pop());
+        }
+        private void AnalHeadDeclaration()
+        {
+            Stack<int> rec = new Stack<int>();
+            int state = 0;
+            int counter = 0,tempCount=0;
+            while(input.Count()!=0)
+            {
+
+                int nowSymbol = input.Pop();
+                rec.Push(nowSymbol);
+                switch(state)
+                {
+                    case 0:
+                        if (nowSymbol == sheet.grammer.Symbol2Code["int"] ||
+                            nowSymbol == sheet.grammer.Symbol2Code["float"] ||
+                            nowSymbol == sheet.grammer.Symbol2Code["char"])
+                            state = 1;
+                        else
+                            state = 4;
+                        break;
+                    case 1:
+                        if(nowSymbol== sheet.grammer.Symbol2Code["identifier"])
+                        {
+                            tempCount++;
+                            state = 2;
+                        }
+                        else
+                            state = 4;
+                        break;
+                    case 2:
+                        if (nowSymbol == sheet.grammer.Symbol2Code[";"])
+                        {
+                            rec.Clear();
+                            counter += tempCount;
+                            tempCount = 0;
+                            state = 0;
+                        }
+                        else if (nowSymbol == sheet.grammer.Symbol2Code[","])
+                        {
+                            state = 3;
+                        }
+                        else
+                            state = 4;
+                        break;
+                    case 3:
+                        if (nowSymbol == sheet.grammer.Symbol2Code["identifier"])
+                        {
+                            tempCount++;
+                            state = 2;
+                        }
+                        else
+                            state = 4;
+                        break;
+                }
+                if(state==4)
+                {
+                    recover(rec);
+                    Console.WriteLine("Detected " + counter + " pre-definition.");
+                    break;
+                }
+            }
+        }
 		public void Run(String tokenFilePath)
 		{
 			int[] bracketStack = new int[3];
 			Init(tokenFilePath);
+            AnalHeadDeclaration();
 			states.Push(0);
 			bool flag = false;
 			bool meetError = false;
