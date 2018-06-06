@@ -1,33 +1,42 @@
-typedef 39
-int 9
-myInt 11
-; 35
-typedef 39
-myInt 11
-myInt1 11
-; 35
-typedef 39
-myInt 11
-muInt2 11
-; 35
-struct 11
-node 11
-{ 33
-int 9
-x 11
-; 35
-} 34
-; 35
-int 9
-a 11
-; 35
-int 9
-main 11
-( 31
-) 32
-{ 33
-int 9
-d 11
-; 35
-} 34
-# 38
+typedef 39 0
+int 9 0
+bb 11 0
+; 35 0
+struct 40 1
+node 11 1
+{ 33 2
+int 9 3
+a 11 3
+, 27 3
+b 11 3
+; 35 3
+float 8 4
+c 11 4
+; 35 4
+} 34 5
+; 35 5
+bb 11 6
+j 11 6
+; 35 6
+float 8 7
+k 11 7
+; 35 7
+char 10 8
+ch 11 8
+; 35 8
+int 9 9
+f 11 9
+( 31 9
+) 32 9
+{ 33 10
+typedef 39 11
+char 10 11
+cc 11 11
+; 35 11
+cc 11 12
+j 11 12
+, 27 12
+x 11 12
+; 35 12
+} 34 13
+# 38 0

@@ -8,6 +8,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using static SLR1.Grammer.GrammerItem;
 using static SLR1.Sheet;
+using static SLR1.TypeList;
+using static SLR1.TypeList.RecordTypePtr;
 
 namespace SLR1
 {
@@ -15,14 +17,11 @@ namespace SLR1
 	{
 		static void Main(string[] args)
 		{
-			
-			
 			Grammer grammer = new Grammer(@"Grammer/GrammerTest.txt",@"Grammer/ClassCode.txt");
 			Sheet sheet = new Sheet(grammer);
 			Driver driver = new Driver(sheet);
 			driver.Run(@"Token/tokens.txt");
 			Console.Read();
-			
 		}
 	}
 	class Sheet
@@ -91,7 +90,7 @@ namespace SLR1
 		{
 			foreach(var i in MainSet[stateId].projects)
 			{
-				if (i.GetFrom() == grammer.Symbol2Code["K"] && i.RightSymbol() == grammer.Symbol2Code["("])
+				if (i.GetFrom() == grammer.Symbol2Code["K"] && (!i.isReduce()&&i.RightSymbol() == grammer.Symbol2Code["("]))
 					return true;
 			}
 			return false;
@@ -322,25 +321,27 @@ namespace SLR1
 	}
 	class Driver
 	{
-		Stack<int> input;
+		Stack<Token> input;
 		Stack<int> states;
 		Sheet sheet;
-
-		public Driver(Sheet sheet)
+        TypeList typeList;
+        DenfList denfList;
+        Stack<int> offStack;
+        int off;
+        public Driver(Sheet sheet)
 		{
 			this.sheet = sheet;
 		}
 		private void Init(String tokenFilePath)
 		{
 			states = new Stack<int>();
-			input = new Stack<int>();
+			input = new Stack<Token>();
 			var tokens = ReadToken(tokenFilePath);
 			for(int i=tokens.Length-1;i>=0;i--)
 			{
-				input.Push(tokens[i].code);
+				input.Push(tokens[i]);
 			}
 			Console.WriteLine(input.Peek());
-
 		}
 		public void PrintAction(Sheet.Action action)
 		{
@@ -377,49 +378,138 @@ namespace SLR1
 				bracketIndex = symbolCode - 34 + 3;
 			return bracketIndex;
 		}
-        private void recover(Stack<int> rec)
+        private void recover(Stack<Token> rec)
         {
             while (rec.Count() != 0)
+            {
+                if(rec.Peek().code== sheet.grammer.Symbol2Code["identifier"])
+                {
+                    off -= denfList.list[denfList.list.Count - 1].Second.typePtr.size;
+                    denfList.list.RemoveAt(denfList.list.Count - 1);
+                }
                 input.Push(rec.Pop());
+            }
+        }
+        private void AnalTypedefStruct()
+        {
+            Stack<Token> newInput = new Stack<Token>();
+            while(input.Count!=0)
+            {
+                Token tk = input.Pop();
+                if(tk.code==39)
+                {
+                    Token srcType = input.Pop();
+                    Token targetType = input.Pop();
+                    bool flag = false;
+                    if(typeList.FindType(srcType.content)!=null)
+                    {
+                        denfList.list.Add(new Pair<string, DenfItem>(targetType.content, new typeKind(targetType.content,typeList.FindType(srcType.content), targetType.line)));
+                        flag = true;
+                    }
+                    if(flag==false)
+                    {
+                        Console.WriteLine($"Error: symbol {srcType.content} undefined.");
+                    }
+                    input.Pop();
+                }
+                else if(tk.code==40)
+                {
+                    String fieldName = input.Pop().content;
+                    input.Pop();
+                    offStack.Push(off);
+                    off = 0;
+                    var structType = new RecordTypePtr(fieldName);
+                    while (input.Peek().content !="}")
+                    {
+                        String typeName = input.Pop().content;
+                        TypePtr type = typeList.FindType(typeName);
+                        while (input.Peek().content!=";")
+                        {
+                            Token idenTk = input.Pop();
+                            if(idenTk.code== sheet.grammer.Symbol2Code["identifier"])
+                            {
+                                structType.AddBody(new RecordBody(idenTk.content,type, structType.size));
+                                off += typeList.FindType(typeName).size;
+                            }
+                        }
+                        input.Pop();
+                    }
+                    typeList.list.Add(structType);
+                    denfList.list.Add(new Pair<string, DenfItem>(fieldName, new fieldKind(fieldName,structType, off, tk.line)));
+                    input.Pop();
+                    input.Pop();
+                    off = offStack.Pop();
+                }
+                else
+                {
+                    foreach(var item in denfList.list)
+                    {
+                        if(tk.content==item.First)
+                        {
+                            tk.content = item.Second.typePtr.typeName;
+                            tk.code = sheet.grammer.Symbol2Code[tk.content];
+                        }
+                    }
+                    newInput.Push(tk);
+                }
+            }
+            while(newInput.Count!=0)
+            {
+                input.Push(newInput.Pop());
+            }
+            foreach(var item in input)
+            {
+                Console.WriteLine(item.content + " " + item.code);
+            }
         }
         private void AnalHeadDeclaration()
         {
-            Stack<int> rec = new Stack<int>();
+            Stack<Token> rec = new Stack<Token>();
             int state = 0;
             int counter = 0,tempCount=0;
-            while(input.Count()!=0)
-            {
+            String nowType="";
 
-                int nowSymbol = input.Pop();
+            while (input.Count()!=0)
+            {
+                Token nowSymbol = input.Pop();
                 rec.Push(nowSymbol);
                 switch(state)
                 {
                     case 0:
-                        if (nowSymbol == sheet.grammer.Symbol2Code["int"] ||
-                            nowSymbol == sheet.grammer.Symbol2Code["float"] ||
-                            nowSymbol == sheet.grammer.Symbol2Code["char"])
+                        if (nowSymbol.code == sheet.grammer.Symbol2Code["int"] ||
+                            nowSymbol.code == sheet.grammer.Symbol2Code["float"] ||
+                            nowSymbol.code == sheet.grammer.Symbol2Code["char"])
+                        {
+                            nowType = nowSymbol.content;
                             state = 1;
+                        }
                         else
                             state = 4;
                         break;
                     case 1:
-                        if(nowSymbol== sheet.grammer.Symbol2Code["identifier"])
+                        if(nowSymbol.code == sheet.grammer.Symbol2Code["identifier"])
                         {
-                            tempCount++;
+                            TypePtr type = typeList.FindType(nowType);
+                            if(type!=null)
+                            {
+                                denfList.list.Add(new Pair<string, DenfItem>(nowSymbol.content, new varKind(nowSymbol.content,type, Access.dir, 0, off, nowSymbol.line)));
+                                off += type.size;
+                                tempCount++;
+                            }
                             state = 2;
                         }
                         else
                             state = 4;
                         break;
                     case 2:
-                        if (nowSymbol == sheet.grammer.Symbol2Code[";"])
+                        if (nowSymbol.code == sheet.grammer.Symbol2Code[";"])
                         {
                             rec.Clear();
                             counter += tempCount;
                             tempCount = 0;
                             state = 0;
                         }
-                        else if (nowSymbol == sheet.grammer.Symbol2Code[","])
+                        else if (nowSymbol.code == sheet.grammer.Symbol2Code[","])
                         {
                             state = 3;
                         }
@@ -427,9 +517,15 @@ namespace SLR1
                             state = 4;
                         break;
                     case 3:
-                        if (nowSymbol == sheet.grammer.Symbol2Code["identifier"])
+                        if (nowSymbol.code == sheet.grammer.Symbol2Code["identifier"])
                         {
-                            tempCount++;
+                            TypePtr type = typeList.FindType(nowType);
+                            if (type != null)
+                            {
+                                denfList.list.Add(new Pair<string, DenfItem>(nowSymbol.content, new varKind(nowSymbol.content,type, Access.dir, 0, off, nowSymbol.line)));
+                                off += type.size;
+                                tempCount++;
+                            }
                             state = 2;
                         }
                         else
@@ -446,18 +542,30 @@ namespace SLR1
         }
 		public void Run(String tokenFilePath)
 		{
-			int[] bracketStack = new int[3];
+            typeList = new TypeList();
+            denfList = new DenfList();
+            offStack = new Stack<int>();
+            off = 0;
+            int[] bracketStack = new int[3];
 			Init(tokenFilePath);
+            AnalTypedefStruct();
             AnalHeadDeclaration();
+
 			states.Push(0);
 			bool flag = false;
 			bool meetError = false;
 			int preSymbol=-1;
+            String nowType = "";
 			while(input.Count()!=0)
 			{
 				int nowState = states.Peek();
-				int nextSymbol = input.Peek();
-				var nowAction = sheet.GetAction(nowState, nextSymbol);
+				Token nextSymbol = input.Peek();
+				var nowAction = sheet.GetAction(nowState, nextSymbol.code);
+                if(typeList.FindType(nextSymbol.content)!=null)
+                {
+                    nowType = nextSymbol.content;
+                }
+                
 				//debug
 				/*
 				Console.WriteLine(nowState);
@@ -474,6 +582,7 @@ namespace SLR1
 				*/
 				//
 				//PrintAction(nowAction);
+
 				if (nowAction is Accept)
 				{
 					flag = true;
@@ -481,7 +590,46 @@ namespace SLR1
 				}
 				else if(nowAction is Shift)
 				{
-					int brackedIndex = GetBrackedIndex(nextSymbol);
+                    if (nextSymbol.content == ";")
+                    {
+                        nowType = "";
+                    }
+                    if (nextSymbol.content == "{")
+                    {
+                        offStack.Push(off);
+                        off = 0;
+                    }
+                    if (nextSymbol.content == "}")
+                    {
+                        off = offStack.Pop();
+                    }
+                    if (nextSymbol.code == sheet.grammer.Symbol2Code["identifier"] && nowType.Length != 0)
+                    {
+                        Token nowtoken = input.Pop();
+                        String nex_nex_symbol = input.Peek().content;
+                        input.Push(nowtoken);
+                        if (nex_nex_symbol == ";" || nex_nex_symbol == ",")
+                        {
+                            if(denfList.isRepeat(nextSymbol.content))
+                            {
+                                Console.WriteLine($"Symbol {nextSymbol.content} Re-Defination. line:"+nextSymbol.line);
+                            }
+                            else
+                            {
+                                if (denfList.list.Last().Second is actualRouteKind)
+                                {
+                                    (denfList.list.Last().Second as actualRouteKind).parm = denfList.list.Count();
+                                }
+                                denfList.list.Add(new Pair<string, DenfItem>(nextSymbol.content, new varKind(nextSymbol.content, typeList.FindType(nowType), Access.dir, offStack.Count(), off, nextSymbol.line)));
+                                off += typeList.FindType(nowType).size;
+                            }
+                        }
+                        if (nex_nex_symbol == "(")
+                        {
+                            denfList.list.Add(new Pair<string, DenfItem>(nextSymbol.content, new actualRouteKind(nextSymbol.content,typeList.FindType(nowType), offStack.Count(),nextSymbol.line)));
+                        }
+                    }
+                    int brackedIndex = GetBrackedIndex(nextSymbol.code);
 					if(brackedIndex!=-1)
 					{
 						if (brackedIndex < 3)
@@ -489,7 +637,7 @@ namespace SLR1
 						else
 							bracketStack[brackedIndex-3]--;
 					}
-					preSymbol = nextSymbol;
+					preSymbol = nextSymbol.code;
 					input.Pop();
 					states.Push((nowAction as Shift).nextState);
 				}
@@ -498,7 +646,7 @@ namespace SLR1
 					var edge = (nowAction as Reduce).reduceEdge;
 					for (int i = 0; i < edge.to.Length; i++)
 						states.Pop();
-					input.Push(edge.GetFrom());
+					input.Push(new Token("",edge.GetFrom(),0));
 				}
 				else
 				{
@@ -506,63 +654,82 @@ namespace SLR1
 					if(	preSymbol== sheet.grammer.Symbol2Code["+"]||
 						preSymbol== sheet.grammer.Symbol2Code["*"])
 					{
-						input.Push(sheet.grammer.Symbol2Code["number"]);
+						input.Push(numberToken);
 						Console.WriteLine("Expect a number after " + sheet.grammer.Code2Symbol[preSymbol]);
 					}
-					else if(nextSymbol == sheet.grammer.Symbol2Code["+"] ||
-							nextSymbol == sheet.grammer.Symbol2Code["*"])
+					else if(nextSymbol.code == sheet.grammer.Symbol2Code["+"] ||
+							nextSymbol.code == sheet.grammer.Symbol2Code["*"])
 					{
-						input.Push(sheet.grammer.Symbol2Code["number"]);
-						Console.WriteLine("Expect a number after " + sheet.grammer.Code2Symbol[nextSymbol]);
+						input.Push(numberToken);
+						Console.WriteLine("Expect a number after " + sheet.grammer.Code2Symbol[nextSymbol.code]);
 					}
 					else if (preSymbol == sheet.grammer.Symbol2Code["while"]|| preSymbol == sheet.grammer.Symbol2Code["for"])
 					{
-						input.Push(sheet.grammer.Symbol2Code["("]);
+						input.Push(new Token("",sheet.grammer.Symbol2Code["("],0));
 						bracketStack[0]++;
 						Console.WriteLine("Expect '(' after "+ sheet.grammer.Code2Symbol[preSymbol]);
 						continue;
 					}
 					else if (sheet.HasFunctionLeftBracket(nowState))
 					{
-						input.Push(sheet.grammer.Symbol2Code["("]);
+						input.Push(new Token("", sheet.grammer.Symbol2Code["("], 0));
 						bracketStack[0]++;
 						Console.WriteLine("Expect '(' after " + sheet.grammer.Code2Symbol[preSymbol]);
 						continue;
 					}
 					else if (sheet.GetAction(nowState, sheet.grammer.Symbol2Code[")"])!=null&&bracketStack[0]!=0)
 					{
-						input.Push(sheet.grammer.Symbol2Code[")"]);
-						Console.WriteLine("Expect ')' before " + sheet.grammer.Code2Symbol[nextSymbol]);
+						input.Push(new Token("", sheet.grammer.Symbol2Code[")"], 0));
+						Console.WriteLine("Expect ')' before " + sheet.grammer.Code2Symbol[nextSymbol.code]);
 						continue;
 					}
 					else if (sheet.GetAction(nowState, sheet.grammer.Symbol2Code["]"]) != null && bracketStack[1] != 0)
 					{
-						input.Push(sheet.grammer.Symbol2Code["]"]);
-						Console.WriteLine("Expect ')' before " + sheet.grammer.Code2Symbol[nextSymbol]);
+						input.Push(new Token("", sheet.grammer.Symbol2Code["]"], 0));
+						Console.WriteLine("Expect ')' before " + sheet.grammer.Code2Symbol[nextSymbol.code]);
 						continue;
 					}
 					else if (sheet.GetAction(nowState, sheet.grammer.Symbol2Code["}"]) != null && bracketStack[2] != 0)
 					{
-						input.Push(sheet.grammer.Symbol2Code["}"]);
-						Console.WriteLine("Expect ')' before " + sheet.grammer.Code2Symbol[nextSymbol]);
+						input.Push(new Token("", sheet.grammer.Symbol2Code["}"], 0));
+						Console.WriteLine("Expect ')' before " + sheet.grammer.Code2Symbol[nextSymbol.code]);
 						continue;
 					}
 					else
 					{
-						Console.WriteLine("UnExpected symbol "+ sheet.grammer.Code2Symbol[nextSymbol]);
+						Console.WriteLine("UnExpected symbol "+ sheet.grammer.Code2Symbol[nextSymbol.code]);
 						input.Pop();
 						Console.WriteLine(input.Count());
 						continue;
 					}
 				}
 			}
-			if (flag&&!meetError)
-				Console.WriteLine("Accepted");
-			else
-			{
-				Console.WriteLine("Failed");
-			}
+            if (flag && !meetError)
+                Console.WriteLine("Accepted");
+            else
+            {
+                Console.WriteLine("Failed");
+            }
+            PrintList();
 		}
+        void PrintList()
+        {
+            denfList.list.Sort((x, y) =>
+            {
+                return x.Second.line - y.Second.line;
+            });
+            Console.WriteLine("Symbol Table:");
+            foreach (var item in denfList.list)
+            {
+                Console.WriteLine(item.Second.ToString());
+            }
+            //Console.WriteLine("Type Table:");
+            //foreach (var item in typeList.list)
+            //{
+            //    Console.WriteLine(item);
+            //}
+            Console.Read();
+        }
 		class Token
 		{
 			public String content { get; set; }
@@ -575,6 +742,7 @@ namespace SLR1
 				this.line = line;
 			}
 		}
+        Token numberToken = new Token("", 12, 0);
 		Token[] ReadToken(String filePath)
 		{
 			List<Token> list = new List<Token>();
@@ -588,7 +756,7 @@ namespace SLR1
 				{
 					str = rs.ReadLine();
 					if (str.Split(' ')[0] != @"\n")
-						list.Add(new Token(str.Split(' ')[0], Int32.Parse(str.Split(' ')[1]), line));
+						list.Add(new Token(str.Split(' ')[0], Int32.Parse(str.Split(' ')[1]), Int32.Parse(str.Split(' ')[2])));
 					else
 						line++;
 				}
@@ -851,7 +1019,7 @@ namespace SLR1
 				rs.Close();
 				fs.Close();
 			}
-			catch (Exception e) { throw e; }
+			catch (Exception e) { Console.WriteLine(e); }
 		}
 		public EdgeItem[] GetEdgesOf(int v)
 		{
