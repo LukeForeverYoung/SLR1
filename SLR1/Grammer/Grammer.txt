@@ -1,0 +1,19 @@
+Z S
+S while ( E ) S
+S E ;
+S ;
+S for ( E ; E ; E ) S
+S { Q }
+Q Q S
+Q n/a
+E identifier = E
+E T
+T T + P
+T T - P
+T P
+P P * F
+P P / F
+P F
+F identifier
+F ( E )
+F number

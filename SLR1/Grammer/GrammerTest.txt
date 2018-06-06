@@ -1,0 +1,31 @@
+Z C
+C C K
+C n/a
+G G I
+G n/a
+I int L ;
+L identifier M
+L identifier [ number ] M
+M M , identifier
+M M , identifier [ number ]
+M n/a
+K float identifier ( ) { Q }
+K int identifier ( ) { Q }
+K char identifier ( ) { Q }
+S while ( E ) S
+S E ;
+S ;
+S for ( E ; E ; E ) S
+S { Q }
+Q G D
+D S D
+D n/a
+E identifier = E
+E T
+T T + P
+T P
+P P * F
+P F
+F identifier
+F ( E )
+F number
