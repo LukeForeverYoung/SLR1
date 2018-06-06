@@ -3,7 +3,6 @@ C C K
 C n/a
 G G I
 G n/a
-struct identifier { G } ;
 I int L ;
 I char L ;
 L identifier M

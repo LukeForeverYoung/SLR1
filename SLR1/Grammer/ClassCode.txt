@@ -37,3 +37,4 @@ number 12
 . 36
 # 38
 typedef 39
+struct 40
